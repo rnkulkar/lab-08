@@ -1,1 +1,237 @@
+---
+title: "Lab 08"
+author: "Rohit Kulkarni"
+date: "3/9/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidyverse)
+library(nnet)
+library(knitr)
+library(broom)
+library(caret)
+```
+
+```{r}
+gss <- read_csv("data/gss2016.csv",
+                na = c("", "Don't know", "No answer", 
+                       "Not applicable"), 
+                guess_max = 2867) %>%
+  select(natmass, age, sex, sei10, region, polviews) %>%
+  drop_na()
+```
+# Exercises
+## Part I: Exploratory Data Analysis
+See Reorder factor levels by hand for documentation about fct_relevel.
+
+1. The variable ```natmass``` will be the response variable in the model, and you want to compare more opinionated views to the moderate position. Recode ```natmass``` so it is a factor variable with "About right" as the baseline.
+
+```{r}
+gss$natmass <- as.factor(gss$natmass)
+
+gss$natmass <- relevel(gss$natmass, ref = "About right")
+```
+
+2. Recode ```polviews``` so it is a factor variable type with levels that are in an order that is consistent with question on the survey. Note how the categories are spelled in the data.
+
+```{r}
+gss$polviews <- fct_recode(gss$polviews, 
+                           "1"="Extremely liberal",
+                           "2"="Liberal",
+                           "3"="Slightly liberal",
+                           "4"="Moderate",
+                           "5"="Slghtly conservative",
+                           "6"="Conservative",
+                           "7"="Extrmly conservative")
+gss$polviews <- fct_relevel(gss$polviews,
+                            "1", "2", "3", "4", "5", "6", "7")
+```
+
+
+Make a plot of the distribution of ```polviews```. Which political view occurs most frequently in this data set?
+
+```{r, fig.dim=c(4,3)}
+ggplot(data=gss, aes(x = polviews)) + geom_histogram(stat="count") + 
+  labs(x = "Political Views",
+       y = "Count",
+       title = "Distribution of Political Views")
+```
+
+The political view occurs the most frequently is ```Moderate```.
+
+
+
+3. Make a plot displaying the relationship between ```natmass``` and ```polviews```. Use the plot to describe the relationship between a person’s political views and their views on mass transportation spending.
+
+```{r, fig.dim=c(4,3)}
+
+ggplot(data = gss, aes(fill=natmass, x=polviews)) + 
+    geom_bar(position="stack") + 
+  labs(x = "Political Views",
+       y = "Count of About Right/Not Right",
+       title = "Count of About Right / Not Right based on Political Views")
+```
+
+Using the plot, I can tell that more liberal political views are associated with thinking that we do not spend enough on mass transportation and more conservative political views are associated with thinking that we spend a good amount or we need to spend less. Moderates mostly believe that we spend enough on mass transportation, while a good amount do believe we need to spend more and a small minority believe we must spend less. 
+
+4. You want to use ```age``` as a quantitative variable in your model; however, it is currently a character data type because some observations are coded as "89 or older". Recode ```age``` so that is a numeric variable. Note: Before making the variable numeric, you will need to replace the values "89 or older" with a single value.
+
+```{r}
+gss$age <- as.factor(gss$age)
+gss$age <- fct_recode(gss$age, "89" = "89 or older")
+gss$age <- as.integer(gss$age)
+```
+
+## Part II: Multinomial Logistic Regression Model
+
+5. You plan to fit a model using ```age```, ```sex```, ```sei10```, and ```region``` to understand variation in opinions about spending on mass transportation. Briefly explain why you should fit a multinomial logistic model.
+
+Since the response variable, ```natmass```, has three levels rather than just two, the model needs to be able to choose between one of these three options. This is why a multinomial logistic model must be used. 
+
+6. Fit the model described in the previous exercise and display the model output. Make any necessary adjustments to the variables so the intercept will have a meaningful interpretation. Be sure "About Right" is the baseline level. Be sure the full model displays in the knitted document.
+
+```{r}
+model <- multinom(natmass ~ age + sex + sei10 + region, 
+             data=gss)
+summary(model)
+```
+
+7. Interpret the intercept associated with odds of having an opinion of “Too much” versus “About right”.
+
+The intercept associated with "Too much" is -2.141703, which means that if all of the parameters are assumed to be the base case for categorical variables and average for quantitative variables, that the log likelihood of this case having an opinion of "Too much" is -2.141703. 
+
+8. Consider the relationship between age and one’s opinion about spending on mass transportation. Interpret the coefficient of age in terms of the odds of having an opinion of “Too little” versus “About right”.
+
+The coefficient for age in "Too little" is  0.003937463, which is a very low coefficient. This means that an increase in a person's age, according to the model, has little correlation with whether or not they feel that we are spending too much on mass transportation.
+
+9. Now that you have adjusted for some demographic factors, let’s examine whether a person’s political views has a significant impact on their attitude towards spending on mass transportation.
+
+  Conduct the appropriate test to determine if polviews is a significant predictor of attitude towards spending on mass transportation. State the null and alternative hypothesis, display all relevant code and output, and state your conclusion in the context of the problem.
+  
+  $H_0$: A person's political views are not a significant predictor of their attitude towards spending on mass transportation.
+  $H_A$: A person's political views are a significant predictor of their attitude towards spending on mass transportation. 
+  
+  To see the affect that ```polviews``` has on ```natmass```, we can perform a regression analysis 
+  
+```{r}
+
+table(gss$natmass, gss$polviews)
+
+chisq.test(gss$polviews, gss$natmass)
+
+```
+
+Since the p-value is so small, we can assume that the alternative hypothesis is true. A person's political views are a significant predictor of their attitude towards spending on mass transportation. 
+
+
+10. Choose the appropriate model based on the results from the test. Use this model for the next part of the lab.
+  
+
+```{r}
+
+model <- multinom(natmass ~ polviews + age + sex + sei10 + region, data=gss)
+summary(model)
+```
+
+
+## Part III: Model Fit
+11. Calculate the predicted probabilities and residuals from your model.
+
+```{r}
+
+summary(model$fitted.values)
+summary(model$residuals)
+```
+
+12. Let’s make some of the plots and tables you use to check the linearity assumption for multinomial logistic regression. Plot the binned residuals versus the predicted probabilities for each category of ```natmass```. You will have three plots.
+
+
+
+```{r, fig.dim=c(2,3)}
+
+residuals <- data.frame(model$residuals)
+fitted <- data.frame(model$fitted.values)
+
+gss$about_right_resid <- residuals$About.right
+gss$about_right_fitted <- fitted$About.right
+
+
+ggplot(data=gss, aes(x = about_right_resid, y = about_right_fitted)) + geom_point() + 
+  labs(x = "Residuals",
+       y = "Predicted Probabilities",
+       title = "Residuals vs Predicted Probabilities of About Right")
+
+gss$too_little_resid <- residuals$Too.little
+gss$too_little_fitted <- fitted$Too.little
+
+ggplot(data=gss, aes(x = too_little_resid, y = too_little_fitted)) + geom_point() + 
+  labs(x = "Residuals",
+       y = "Predicted Probabilities",
+       title = "Residuals vs Predicted Probabilities of Too Little")
+
+gss$too_much_resid <- residuals$Too.much
+gss$too_much_fitted <- fitted$Too.much
+
+ggplot(data=gss, aes(x = too_much_resid, y = too_much_fitted)) + geom_point() + 
+  labs(x = "Residuals",
+       y = "Predicted Probabilities",
+       title = "Residuals vs Predicted Probabilities of Too Much")
+
+```
+
+You can change the size of your plots, so you can fit multiple plots on a single page. Include the arguments fig.height = and fig.width = in the header of the code chunk to change the plot size.
+See Using R Markdown for an example.
+
+13. To examine the residuals versus each categorical predictor, you will look at the average residuals for each each category of the categorical variables.
+
+  - For each category of natmass, calculate the average residuals across categories of region.
+  
+```{r}
+
+
+table(gss$region)
+
+regions <- c("Pacific", "South atlantic", "W. nor. central", "W. sou. central", 
+             "E. nor. central", "E. sou. central", "Middle atlantic", "Mountain",
+             "New england")
+
+for (val in regions) {
+  temp <- filter(gss, region == val)
+  print(val)
+  print("About Right:")
+  print(mean(temp$about_right_resid))
+  print("Too Little:")
+  print(mean(temp$too_little_resid))
+  print("Too much:")
+  print(mean(temp$too_much_resid))
+}
+
+```
+
+
+  
+  
+<i>Based on the plot and table above, discuss with your group whether there are any obvious violations of the linearity assumption. Note that we haven’t examined all of the plots and tables of the residuals needed to make an assessment about the linearity assumption.
+
+The other assumptions are randomness and independence. Discuss with your group whether these assumptions are satisfied for this analysis.</i>
+
+## Part IV: Using the Model
+16. Use your model to describe the relationship between one’s political views and their attitude towards spending on mass transportation.
+
+  Using my model, I can see that when someone views are more liberal, they are more likely to want to spend more on mass transportation, while someone who is conservative is more likely to either think we spend enough on transportation or too much.
+
+17. Use your model to predict the category of ```natmass``` for each observation in your dataset. Display a table of the actual versus the predicted ```natmass```. What is the misclassification rate?
+
+```{r}
+
+pred <- predict(model, newdata = gss)
+
+confusionMatrix(gss$natmass, pred)
+```
+
+The misclassification rate of the model is 1 - 0.5761 = 0.4293, or 42.93%
